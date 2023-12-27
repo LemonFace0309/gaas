@@ -5,8 +5,11 @@
   "scripts": {
     "dev": "tsc -w",
     "build": "tsc",
-    "source": "node dist/source.js",
+    "source": "tsc && node dist/source.js",
     "lint": "eslint . --max-warnings 0"
+  },
+  "dependencies": {
+    "puppeteer": "^21.6.1"
   },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",
