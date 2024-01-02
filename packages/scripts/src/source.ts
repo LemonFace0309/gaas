@@ -1,4 +1,4 @@
-import puppeteer, { Browser } from "puppeteer";
+import puppeteer, { Page } from "puppeteer";
 import { sleep } from "./utils";
 import fs from "fs";
 import path from "path";
@@ -20,25 +20,36 @@ async function getAccounts() {
   return accounts.split("\n");
 }
 
-async function saveImage(browser: Browser, url: string, outputPath: string) {
-  const newPage = await browser.newPage();
-  await newPage.goto(url);
+async function saveImage(page: Page, url: string, outputPath: string) {
+  // Fetch the image as a Base64 string
+  const base64String: string | undefined = await page.evaluate(
+    (url: string) => {
+      return fetch(url)
+        .then((res) => res.blob())
+        .then(
+          (blob) =>
+            new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result);
+              reader.onerror = reject;
+              reader.readAsDataURL(blob);
+            })
+        )
+        .then((dataUrl) => (dataUrl as string).split(",")[1]); // Split and get the Base64 part
+    },
+    url
+  );
 
-  // Find the image element
-  const imageElement = await newPage.$('img');
-
-  if (!imageElement) {
+  if (!base64String) {
     console.log(`Could not find image element for ${url}`);
-    return
+    return;
   }
 
-  // Get the image as a buffer
-  const imageBuffer = await imageElement.screenshot();
+  // Convert Base64 string to binary buffer
+  const buffer = Buffer.from(base64String, "base64");
 
-  // Save the buffer to a file
-  fs.writeFileSync(outputPath, imageBuffer);
-
-  await newPage.close();
+  // Save the buffer as an image file
+  fs.writeFileSync(outputPath, buffer);
 }
 
 async function main() {
@@ -56,7 +67,7 @@ async function main() {
       waitUntil: "networkidle2",
     });
 
-    await sleep(10000); // Wait for 10 seconds
+    await sleep(8000); // Wait for 8 seconds
 
     const images = await page.evaluate(() => {
       // Select all images and filter those with 'object-fit: cover'
@@ -73,7 +84,7 @@ async function main() {
 
     for (const [index, image] of images.entries()) {
       const imagePath = path.join(accountDir, `${index}.jpg`);
-      await saveImage(browser, image, imagePath);
+      await saveImage(page, image, imagePath);
     }
   }
 
