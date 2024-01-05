@@ -83,7 +83,7 @@ async function main() {
     }
 
     for (const [index, image] of images.entries()) {
-      const imagePath = path.join(accountDir, `${index}.jpg`);
+      const imagePath = path.join(accountDir, `${index+1}.jpg`);
       await saveImage(page, image, imagePath);
     }
   }

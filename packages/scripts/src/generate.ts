@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { zip } from "lodash";
 import axios from "axios";
+import sharp from "sharp";
 
 const sourceDir = path.join(__dirname, "..", ".images");
 const outputDir = path.join(__dirname, "..", ".generated");
@@ -87,11 +88,14 @@ async function getPrompt(imgBase64: string) {
 }
 
 async function getPrompts(account: string, imgs: string[]): Promise<string[]> {
-  console.log(`Starting to generate prompts for ${account}`)
+  console.log(
+    `%cStarting to generate prompts for ${account}`,
+    "font-weight: bold"
+  );
 
   let prompts: string[] = [];
 
-  let idx = 1
+  let idx = 1;
   for (const img of imgs) {
     console.log(`Generating prompt #${idx}`);
     let prompt = await getPrompt(img);
@@ -102,23 +106,56 @@ async function getPrompts(account: string, imgs: string[]): Promise<string[]> {
     }
 
     prompts.push(prompt);
-    idx += 1
+    idx += 1;
   }
 
-  console.log(`Done generating prompts for ${account}`)
+  console.log(`%cDone generating prompts for ${account}`, "font-weight: bold");
   return prompts;
 }
 
-async function generateImg(img: string, prompt: string) {
+function getBase64ImageDimensions(
+  imgBase64: string
+): Promise<{ width: number; height: number }> {
+  const imgSrc = imgBase64.replace(/^data:image\/\w+;base64,/, "");
+
+  const imageBuffer = Buffer.from(imgSrc, "base64");
+
+  return sharp(imageBuffer)
+    .metadata()
+    .then((metadata) => ({
+      width: metadata.width ?? -1,
+      height: metadata.height ?? -1,
+    }))
+    .catch((error) => {
+      throw error;
+    });
+}
+
+async function img2Img(img: string, prompt: string) {
   try {
+    const { width, height } = await getBase64ImageDimensions(img);
+
+    console.log(`Image dimensions: ${width}x${height}`);
+
     const res = await client.post<{
       images: string[];
     }>("/img2img", {
       prompt,
       negative_prompt: NEGATIVE_PROMT,
       init_images: [img],
+      cfg_scale: 5,
+      steps: 32,
+      batch_size: 2,
+      n_iter: 2,
+      denoising_strength: 0.65,
+      sampler_index: "DPM++ 2M Karras",
+      include_init_images: true,
+      seed_resize_from_h: 0.8,
+      seed_resize_from_w: 0.8,
+      width: width,
+      height: height,
     });
-    return res.data.images[0];
+    return res.data.images;
   } catch (err) {
     console.log(`Unable to generate image: ${err}`);
   }
@@ -130,39 +167,44 @@ async function generateImgs(
   imgs: string[],
   prompts: string[]
 ) {
-  console.log(`Starting to generate images fro ${account}`)
+  console.log(
+    `%cStarting to generate images for ${account}`,
+    "font-weight: bold"
+  );
   const imgClipPairs = zip(imgs, prompts);
 
-  let idx = 1
+  let idx = 1;
   for (const [img, prompt] of imgClipPairs) {
     if (!img || !prompt) {
       continue;
     }
 
-    console.log("prompt:", prompt);
+    console.log(`Generating image #${idx}.\nPrompt: ${prompt}`);
+    const imgs = await img2Img(img, prompt);
 
-    console.log(`Generating image #${idx}`);
-    const generatedImg = await generateImg(img, prompt);
-
-    if (!generatedImg) {
-      console.log(`No image was returned for ${idx}`);
+    if (!imgs) {
+      console.log(`No images were returned for ${idx}`);
       continue;
     }
 
-    const buffer = Buffer.from(generatedImg, "base64");
+    let subIdx = 1;
+    for (const generatedImg of imgs) {
+      const buffer = Buffer.from(generatedImg, "base64");
 
-    const generatedImgDir = path.join(outputDir, account);
+      const generatedImgDir = path.join(outputDir, account, idx.toString());
 
-    if (!fs.existsSync(generatedImgDir)) {
-      fs.mkdirSync(generatedImgDir, { recursive: true });
+      if (!fs.existsSync(generatedImgDir)) {
+        fs.mkdirSync(generatedImgDir, { recursive: true });
+      }
+      const generatedImgPath = path.join(generatedImgDir, `${subIdx}.jpg`);
+
+      fs.writeFileSync(generatedImgPath, buffer);
+      subIdx++;
     }
-    const generatedImgPath = path.join(generatedImgDir, `${idx}.jpg`);
-
-    fs.writeFileSync(generatedImgPath, buffer);
     idx++;
   }
 
-  console.log(`Done generating images for ${account}`);
+  console.log(`%cDone generating images for ${account}`, "font-weight: bold");
 }
 
 async function main() {
@@ -171,8 +213,8 @@ async function main() {
   for (const account of accounts) {
     const accountDir = getAccountDir(account);
     const images = getImages(accountDir).slice(0, 1);
-    const prompts = await getPrompts(account, images); 
-    
+    const prompts = await getPrompts(account, images);
+
     await generateImgs(account, images, prompts);
   }
 }
