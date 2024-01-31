@@ -67,7 +67,7 @@ async function main() {
       waitUntil: "networkidle2",
     });
 
-    await sleep(8000); // Wait for 8 seconds
+    await sleep(80000000); // Wait for 8 seconds
 
     const images = await page.evaluate(() => {
       // Select all images and filter those with 'object-fit: cover'

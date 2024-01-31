@@ -150,8 +150,6 @@ async function img2Img(img: string, prompt: string) {
       denoising_strength: 0.65,
       sampler_index: "DPM++ 2M Karras",
       include_init_images: true,
-      seed_resize_from_h: 0.8,
-      seed_resize_from_w: 0.8,
       width: width,
       height: height,
     });
